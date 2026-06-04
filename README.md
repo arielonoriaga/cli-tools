@@ -168,6 +168,31 @@ Output files are named `{original}_optimized.mp4`.
 
 ---
 
+### `ttk mutate <paths>... --test "<cmd>"`
+
+Language-agnostic mutation testing. Mutates source text (operator swaps), runs your test command, and reports which mutants survived — i.e. where your tests are blind.
+
+```bash
+ttk mutate src --test "cargo test"
+ttk mutate src --test "pytest -q" --build "python -m compileall -q src"
+ttk mutate . --test "npm test" --since HEAD~5 --jobs 8
+```
+
+- `--test` (required): command that exits 0 when healthy. A mutant that keeps it green is a survivor (test gap).
+- `--build` (optional): compile step run before the test; failure marks the mutant *unviable* instead of *killed*. Without it, compile-broken mutants count as killed.
+- `--since <ref>`: only mutate lines changed since a git ref (great for CI).
+- `--max-mutants <N>`, `--jobs <N>`, `--retest <N>`, `--timeout <secs>`, `--include`/`--exclude` globs, `--config <file>`, `--report <file.md>`.
+
+Extend the rule table per repo with `.ttk-mutate.toml`:
+
+```toml
+[[rule]]
+find = "and"
+replace = "or"
+```
+
+---
+
 ## Requirements
 
 | Command | Dependency |
