@@ -1,0 +1,16 @@
+[package]
+name = "ttk-mutate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+walkdir = "2"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+glob = "0.3"
+wait-timeout = "0.2"
+tempfile = "3"
+ttk-core = { path = "../core" }
+
+[dev-dependencies]
+tempfile = "3"
