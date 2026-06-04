@@ -92,6 +92,44 @@ enum Commands {
         #[arg(long, default_value = "web")]
         quality: String,
     },
+    /// Language-agnostic mutation testing: mutate source, run your test command, report survivors
+    Mutate {
+        /// Files or directories to mutate
+        paths: Vec<PathBuf>,
+        /// Verdict command; green (exit 0) = pass
+        #[arg(long)]
+        test: String,
+        /// Optional build/compile command; non-zero = unviable mutant
+        #[arg(long)]
+        build: Option<String>,
+        /// Mutation rule overlay TOML (default: .ttk-mutate.toml if present)
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Parallel workers (default: number of CPUs)
+        #[arg(long)]
+        jobs: Option<usize>,
+        /// Only mutate lines changed since this git ref
+        #[arg(long)]
+        since: Option<String>,
+        /// Only mutate files matching this glob (relative path)
+        #[arg(long)]
+        include: Option<String>,
+        /// Skip files matching this glob (relative path)
+        #[arg(long)]
+        exclude: Option<String>,
+        /// Per-mutant timeout in seconds (default: 3x baseline)
+        #[arg(long)]
+        timeout: Option<u64>,
+        /// Cap total mutants; rank by frequency, drop rest (0 = unlimited)
+        #[arg(long, default_value_t = 0)]
+        max_mutants: usize,
+        /// Re-run flipped verdicts N times; killed only if all fail
+        #[arg(long, default_value_t = 1)]
+        retest: usize,
+        /// Write a markdown report to this path
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 fn parse_since_date(s: &str) -> Result<DateTime<Local>, String> {
@@ -175,6 +213,39 @@ fn run_command(cli: Cli) -> Result<(), String> {
                 input: &input,
                 output_dir: output_dir.as_deref(),
                 quality: q,
+            })
+        }
+        Commands::Mutate {
+            paths,
+            test,
+            build,
+            config,
+            jobs,
+            since,
+            include,
+            exclude,
+            timeout,
+            max_mutants,
+            retest,
+            report,
+        } => {
+            if paths.is_empty() {
+                return Err("mutate: provide at least one path to mutate".to_string());
+            }
+            let jobs = jobs.unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
+            ttk_mutate::run(ttk_mutate::MutateArgs {
+                paths: &paths,
+                test: &test,
+                build: build.as_deref(),
+                config: config.as_deref(),
+                jobs,
+                since: since.as_deref(),
+                include: include.as_deref(),
+                exclude: exclude.as_deref(),
+                timeout,
+                max_mutants,
+                retest,
+                report: report.as_deref(),
             })
         }
     }
