@@ -1,0 +1,4 @@
+
+*** baseline
+
+*** cargo test --no-run --verbose --package=ttk@0.1.0 --package=ttk-build-and-sign@0.1.0 --package=ttk-clone-repo@0.1.0 --package=ttk-copy-clean@0.1.0 --package=ttk-core@0.1.0 --package=ttk-deleter@0.1.0 --package=ttk-git-digest@0.1.0 --package=ttk-mp3-compress@0.1.0 --package=ttk-mp4-optimize@0.1.0 --package=ttk-mutate@0.1.0 --package=ttk-optimize@0.1.0 --package=ttk-rename@0.1.0 --package=ttk-sign@0.1.0
