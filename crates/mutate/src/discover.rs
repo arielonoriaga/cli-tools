@@ -104,12 +104,12 @@ pub fn changed_lines(project: &Path, since: &str) -> Result<HashMap<PathBuf, Has
 
 fn parse_hunk_new_range(hunk: &str) -> Option<std::ops::RangeInclusive<usize>> {
     let plus = hunk.split('+').nth(1)?;
-    let spec = plus.split(|c| c == ' ' || c == '@').next()?;
+    let spec = plus.split([' ', '@']).next()?;
     let mut parts = spec.split(',');
     let start: usize = parts.next()?.parse().ok()?;
     let count: usize = parts.next().map(|c| c.parse().unwrap_or(1)).unwrap_or(1);
     if count == 0 {
-        Some(start..=start)
+        None
     } else {
         Some(start..=start + count - 1)
     }
@@ -125,7 +125,7 @@ pub fn discover_sites(
     since: Option<&str>,
 ) -> Result<Vec<Site>, String> {
     let mut sorted = rules.to_vec();
-    sorted.sort_by(|a, b| b.find.len().cmp(&a.find.len()));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.find.len()));
 
     let scope = match since {
         Some(s) => Some(changed_lines(project, s)?),
@@ -145,7 +145,20 @@ pub fn discover_sites(
             if path.components().any(|c| SKIP_DIRS.contains(&c.as_os_str().to_string_lossy().as_ref())) {
                 continue;
             }
-            let rel = path.strip_prefix(project).unwrap_or(path);
+            let rel: &Path = if path.is_absolute() {
+                match path.strip_prefix(project) {
+                    Ok(r) => r,
+                    Err(_) => {
+                        ttk_core::tlog(&format!(
+                            "warning: {} is outside project root, skipping",
+                            path.display()
+                        ));
+                        continue;
+                    }
+                }
+            } else {
+                path
+            };
             let rel_str = rel.to_string_lossy();
             if let Some(p) = &inc {
                 if !p.matches(&rel_str) {
@@ -303,5 +316,24 @@ mod tests {
     fn test_parse_hunk_new_range() {
         assert_eq!(parse_hunk_new_range("@@ -1,0 +2,3 @@"), Some(2..=4));
         assert_eq!(parse_hunk_new_range("@@ -5 +7 @@"), Some(7..=7));
+        assert_eq!(parse_hunk_new_range("@@ -3,2 +4,0 @@"), None);
+    }
+
+    #[test]
+    fn test_absolute_path_outside_project_skipped() {
+        let proj = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        fs::write(outside.path().join("ext.rs"), "a == b\n").unwrap();
+        let rules = vec![Rule { find: "==".into(), replace: "!=".into() }];
+        let sites = discover_sites(
+            proj.path(),
+            &[outside.path().to_path_buf()],
+            &rules,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(sites.is_empty());
     }
 }

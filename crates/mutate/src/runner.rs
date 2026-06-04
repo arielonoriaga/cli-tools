@@ -61,7 +61,7 @@ fn apply_mutation(content: &str, site: &Site) -> Option<String> {
     if site.col + site.from.len() > target.len() {
         return None;
     }
-    if &target[site.col..site.col + site.from.len()] != site.from {
+    if target[site.col..site.col + site.from.len()] != *site.from {
         return None;
     }
     let mutated = format!(
@@ -98,7 +98,13 @@ pub fn run_site(sandbox: &Sandbox, site: &Site, cfg: &RunConfig) -> MutationResu
 
     let outcome = classify(&sandbox.root, cfg);
 
-    let _ = std::fs::write(&file, &original);
+    if std::fs::write(&file, &original).is_err() {
+        ttk_core::tlog(&format!(
+            "error: failed to restore {} after mutation; results for this file may be unreliable",
+            file.display()
+        ));
+        return MutationResult { site: site.clone(), outcome: Outcome::Unviable };
+    }
     MutationResult { site: site.clone(), outcome }
 }
 
@@ -111,18 +117,21 @@ fn classify(cwd: &Path, cfg: &RunConfig) -> Outcome {
         }
     }
     let runs = cfg.retest.max(1);
-    let mut all_failed = true;
+    let mut any_passed = false;
+    let mut any_timeout = false;
     for _ in 0..runs {
         match run_verdict(cfg.test, cwd, cfg.timeout) {
-            Verdict::TimedOut => return Outcome::Timeout,
-            Verdict::Passed => all_failed = false,
+            Verdict::TimedOut => any_timeout = true,
+            Verdict::Passed => any_passed = true,
             Verdict::Failed => {}
         }
     }
-    if all_failed {
-        Outcome::Killed
-    } else {
+    if any_passed {
         Outcome::Survived
+    } else if any_timeout {
+        Outcome::Timeout
+    } else {
+        Outcome::Killed
     }
 }
 
@@ -197,5 +206,19 @@ mod tests {
         };
         let r = run_site(&sb, &site(1, 2, "==", "!="), &cfg);
         assert_eq!(r.outcome, Outcome::Unviable);
+    }
+
+    #[test]
+    fn test_retest_pass_beats_later_timeout() {
+        let proj = tempdir().unwrap();
+        std::fs::write(proj.path().join("code.txt"), "a == b\n").unwrap();
+        let sb = Sandbox::new(proj.path()).unwrap();
+        let script = format!(
+            "n=$(cat {c} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {c}; if [ $n -ge 2 ]; then sleep 5; fi; exit 0",
+            c = sb.root.join("counter").display()
+        );
+        let cfg = RunConfig { test: &script, build: None, timeout: Duration::from_millis(300), retest: 2 };
+        let r = run_site(&sb, &site(1, 2, "==", "!="), &cfg);
+        assert_eq!(r.outcome, Outcome::Survived);
     }
 }

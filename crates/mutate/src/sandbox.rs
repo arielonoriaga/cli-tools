@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use ttk_core::fs_utils::copy_clean_dir;
 
-const LINK_DIRS: &[&str] = &["node_modules", "target", ".venv", "vendor", "dist", "build"];
+const LINK_DIRS: &[&str] = &["node_modules", ".venv", "vendor"];
 const SKIP_DIRS: &[&str] = &["node_modules", "target", ".venv", "vendor", "dist", "build", ".git", ".github"];
 
 pub struct Sandbox {

@@ -27,12 +27,7 @@ pub fn mask_line(line: &str) -> String {
                     break;
                 }
             }
-        } else if c == b'/' && i + 1 < b.len() && b[i + 1] == b'/' {
-            for j in i..b.len() {
-                mask(&mut out, j);
-            }
-            break;
-        } else if c == b'#' {
+        } else if (c == b'/' && i + 1 < b.len() && b[i + 1] == b'/') || c == b'#' {
             for j in i..b.len() {
                 mask(&mut out, j);
             }

@@ -122,7 +122,15 @@ pub fn run(args: MutateArgs) -> Result<(), String> {
                 })
             })
             .collect();
-        handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+        handles
+            .into_iter()
+            .flat_map(|h| {
+                h.join().unwrap_or_else(|_| {
+                    tlog("error: a worker thread panicked; its mutants are missing from the report");
+                    Vec::new()
+                })
+            })
+            .collect()
     });
 
     let report = Report::from_results(&results, dropped, args.build.is_some());
