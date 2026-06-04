@@ -1,4 +1,6 @@
+pub mod cargo_mutants;
 pub mod discover;
+pub mod engine;
 pub mod lexer;
 pub mod report;
 pub mod rules;
@@ -10,6 +12,7 @@ use std::time::{Duration, Instant};
 use ttk_core::tlog;
 
 use discover::{discover_sites, rank_and_cap};
+use engine::{Engine, Resolved};
 use report::Report;
 use runner::{run_site, MutationResult, RunConfig};
 use sandbox::Sandbox;
@@ -29,6 +32,7 @@ pub struct MutateArgs<'a> {
     pub max_mutants: usize,
     pub retest: usize,
     pub report: Option<&'a Path>,
+    pub engine: Engine,
 }
 
 fn run_shell(cmd: &str, cwd: &Path, timeout: Duration) -> Result<bool, String> {
@@ -55,12 +59,26 @@ fn run_shell(cmd: &str, cwd: &Path, timeout: Duration) -> Result<bool, String> {
 
 pub fn run(args: MutateArgs) -> Result<(), String> {
     let project = std::env::current_dir().map_err(|e| format!("cannot read cwd: {}", e))?;
+    let resolved = engine::resolve(args.engine, &project)?;
+    let report = match resolved {
+        Resolved::Text => run_text(&args, &project)?,
+        Resolved::CargoMutants => cargo_mutants::run(&args, &project)?,
+    };
+    print!("{}", report.render_stdout());
+    if let Some(path) = args.report {
+        std::fs::write(path, report.render_markdown())
+            .map_err(|e| format!("cannot write report {}: {}", path.display(), e))?;
+        tlog(&format!("markdown report written to {}", path.display()));
+    }
+    Ok(())
+}
 
+fn run_text(args: &MutateArgs, project: &Path) -> Result<Report, String> {
     let rules = rules::load_rules(args.config)?;
 
     tlog("EXECUTING: baseline test run...");
     let start = Instant::now();
-    let baseline_green = run_shell(args.test, &project, BASELINE_TIMEOUT)?;
+    let baseline_green = run_shell(args.test, project, BASELINE_TIMEOUT)?;
     if !baseline_green {
         return Err("baseline test command failed — fix tests before mutating".to_string());
     }
@@ -72,7 +90,7 @@ pub fn run(args: MutateArgs) -> Result<(), String> {
 
     tlog("EXECUTING: discovering mutation sites...");
     let sites = discover_sites(
-        &project,
+        project,
         args.paths,
         &rules,
         args.include,
@@ -85,9 +103,7 @@ pub fn run(args: MutateArgs) -> Result<(), String> {
     }
     if sites.is_empty() {
         tlog("no mutation sites found");
-        let report = Report::from_results(&[], 0, args.build.is_some());
-        print!("{}", report.render_stdout());
-        return Ok(());
+        return Ok(Report::from_results(&[], 0, args.build.is_some()));
     }
     tlog(&format!("{} mutants across {} jobs", sites.len(), args.jobs.max(1)));
 
@@ -104,7 +120,7 @@ pub fn run(args: MutateArgs) -> Result<(), String> {
         retest: args.retest.max(1),
     };
 
-    let project_ref = &project;
+    let project_ref = project;
     let cfg_ref = &cfg;
     let results: Vec<MutationResult> = std::thread::scope(|scope| {
         let handles: Vec<_> = buckets
@@ -133,14 +149,5 @@ pub fn run(args: MutateArgs) -> Result<(), String> {
             .collect()
     });
 
-    let report = Report::from_results(&results, dropped, args.build.is_some());
-    print!("{}", report.render_stdout());
-
-    if let Some(path) = args.report {
-        std::fs::write(path, report.render_markdown())
-            .map_err(|e| format!("cannot write report {}: {}", path.display(), e))?;
-        tlog(&format!("markdown report written to {}", path.display()));
-    }
-
-    Ok(())
+    Ok(Report::from_results(&results, dropped, args.build.is_some()))
 }

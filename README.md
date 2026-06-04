@@ -180,6 +180,7 @@ ttk mutate . --test "npm test" --since HEAD~5 --jobs 8
 
 - `--test` (required): command that exits 0 when healthy. A mutant that keeps it green is a survivor (test gap).
 - `--build` (optional): compile step run before the test; failure marks the mutant *unviable* instead of *killed*. Without it, compile-broken mutants count as killed.
+- `--engine auto|text|cargo-mutants` (default `auto`): on a Rust repo with `cargo-mutants` installed, `auto` delegates to it (AST-accurate, much faster than the text engine, no unviable noise); otherwise the text engine runs. `text` forces the agnostic engine; `cargo-mutants` forces delegation (errors if not installed). cargo-mutants mode ignores `--build`/`--config`/`--retest`/`--max-mutants` (logged) and maps `--since` to its `--in-diff`.
 - `--since <ref>`: only mutate lines changed since a git ref (great for CI).
 - `--max-mutants <N>`, `--jobs <N>`, `--retest <N>`, `--timeout <secs>`, `--include`/`--exclude` globs, `--config <file>`, `--report <file.md>`.
 

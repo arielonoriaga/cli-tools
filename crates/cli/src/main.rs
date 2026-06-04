@@ -129,6 +129,9 @@ enum Commands {
         /// Write a markdown report to this path
         #[arg(long)]
         report: Option<PathBuf>,
+        /// Mutation engine: auto (delegate to cargo-mutants on Rust), text, or cargo-mutants
+        #[arg(long, default_value = "auto")]
+        engine: String,
     },
 }
 
@@ -228,11 +231,13 @@ fn run_command(cli: Cli) -> Result<(), String> {
             max_mutants,
             retest,
             report,
+            engine,
         } => {
             if paths.is_empty() {
                 return Err("mutate: provide at least one path to mutate".to_string());
             }
             let jobs = jobs.unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
+            let engine = ttk_mutate::engine::Engine::parse(&engine)?;
             ttk_mutate::run(ttk_mutate::MutateArgs {
                 paths: &paths,
                 test: &test,
@@ -246,6 +251,7 @@ fn run_command(cli: Cli) -> Result<(), String> {
                 max_mutants,
                 retest,
                 report: report.as_deref(),
+                engine,
             })
         }
     }
