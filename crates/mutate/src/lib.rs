@@ -1,4 +1,5 @@
 pub mod discover;
+pub mod engine;
 pub mod lexer;
 pub mod report;
 pub mod rules;
