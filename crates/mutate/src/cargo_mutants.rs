@@ -10,14 +10,6 @@ use ttk_core::tlog;
 #[derive(Deserialize)]
 struct OutcomesFile {
     #[serde(default)]
-    caught: usize,
-    #[serde(default)]
-    missed: usize,
-    #[serde(default)]
-    timeout: usize,
-    #[serde(default)]
-    unviable: usize,
-    #[serde(default)]
     outcomes: Vec<Entry>,
 }
 
@@ -31,26 +23,37 @@ pub fn parse_outcomes(json: &str) -> Result<Report, String> {
     let f: OutcomesFile =
         serde_json::from_str(json).map_err(|e| format!("malformed cargo-mutants outcomes.json: {}", e))?;
 
+    let mut killed = 0;
+    let mut survived = 0;
+    let mut timeout = 0;
+    let mut unviable = 0;
     let mut survivors = Vec::new();
+
     for entry in &f.outcomes {
-        if entry.summary != "MissedMutant" {
-            continue;
+        match entry.summary.as_str() {
+            "CaughtMutant" => killed += 1,
+            "MissedMutant" => {
+                survived += 1;
+                let mutant = &entry.scenario["Mutant"];
+                let file = mutant["file"].as_str().unwrap_or("(detail unavailable)").to_string();
+                let line = mutant["span"]["start"]["line"].as_u64().unwrap_or(0) as usize;
+                let desc = mutant["name"].as_str().unwrap_or("(detail unavailable)").to_string();
+                survivors.push(MutationResult {
+                    site: Site { file: PathBuf::from(file), line, col: 0, from: desc, to: String::new() },
+                    outcome: Outcome::Survived,
+                });
+            }
+            "Timeout" => timeout += 1,
+            "Unviable" => unviable += 1,
+            _ => {}
         }
-        let mutant = &entry.scenario["Mutant"];
-        let file = mutant["file"].as_str().unwrap_or("(detail unavailable)").to_string();
-        let line = mutant["span"]["start"]["line"].as_u64().unwrap_or(0) as usize;
-        let desc = mutant["name"].as_str().unwrap_or("(detail unavailable)").to_string();
-        survivors.push(MutationResult {
-            site: Site { file: PathBuf::from(file), line, col: 0, from: desc, to: String::new() },
-            outcome: Outcome::Survived,
-        });
     }
 
     Ok(Report {
-        killed: f.caught,
-        survived: f.missed,
-        timeout: f.timeout,
-        unviable: f.unviable,
+        killed,
+        survived,
+        timeout,
+        unviable,
         survivors,
         dropped: 0,
         build_used: true,
@@ -106,9 +109,15 @@ pub fn run(args: &MutateArgs, project: &Path) -> Result<Report, String> {
         cmd.args(["--timeout", &t.to_string()]);
     }
     for p in args.paths {
-        if p != Path::new(".") {
-            cmd.arg("-f").arg(p);
+        if p == Path::new(".") {
+            continue;
         }
+        let glob = if p.is_dir() {
+            format!("{}/**", p.display())
+        } else {
+            p.display().to_string()
+        };
+        cmd.arg("-f").arg(&glob);
     }
     if let Some(inc) = args.include {
         cmd.arg("-f").arg(inc);
@@ -126,8 +135,24 @@ pub fn run(args: &MutateArgs, project: &Path) -> Result<Report, String> {
     }
 
     tlog("EXECUTING: delegating to cargo-mutants...");
-    cmd.status()
+    let status = cmd
+        .status()
         .map_err(|e| format!("failed to launch cargo-mutants: {}", e))?;
+    match status.code() {
+        Some(0) | Some(2) => {}
+        Some(4) => {
+            return Err(
+                "cargo-mutants baseline failed (unmutated tree does not build or pass its own tests) — fix it before mutating; see output above"
+                    .to_string(),
+            );
+        }
+        other => {
+            return Err(format!(
+                "cargo-mutants did not complete (exit {:?}); run may be incomplete — see output above",
+                other
+            ));
+        }
+    }
 
     let outcomes_path = outdir.path().join("mutants.out").join("outcomes.json");
     let json = std::fs::read_to_string(&outcomes_path).map_err(|e| {
@@ -194,5 +219,21 @@ mod tests {
     #[test]
     fn test_parse_malformed_errors() {
         assert!(parse_outcomes("{ not json").is_err());
+    }
+
+    #[test]
+    fn test_counts_from_tally_not_toplevel_fields() {
+        let json = r#"{
+            "caught": 999, "missed": 999, "timeout": 999, "unviable": 999,
+            "outcomes": [
+                { "summary": "CaughtMutant", "scenario": { "Mutant": { "name": "x", "file": "a.rs", "span": { "start": { "line": 1 } } } } },
+                { "summary": "MissedMutant", "scenario": { "Mutant": { "name": "y", "file": "a.rs", "span": { "start": { "line": 2 } } } } }
+            ]
+        }"#;
+        let r = parse_outcomes(json).unwrap();
+        assert_eq!(r.killed, 1);
+        assert_eq!(r.survived, 1);
+        assert_eq!(r.timeout, 0);
+        assert_eq!(r.unviable, 0);
     }
 }
