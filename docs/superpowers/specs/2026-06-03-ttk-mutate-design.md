@@ -223,6 +223,11 @@ Integration:
   copied source.
 - `0↔1` / `+↔-` token swaps hit indices, versions, format strings → higher
   unviable rate. Accepted; bounded by `--max-mutants` and reported honestly.
+- Build-output dirs (`target`, `dist`, `build`) are NOT symlinked into the
+  sandbox (only true dep dirs `node_modules`/`.venv`/`vendor` are) — keeps
+  parallel workers isolated. Consequence: compiled-language projects do a cold
+  build in each sandbox, so the default per-mutant timeout (`3×` warm baseline)
+  may be too tight → pass `--timeout` (or a warming `--build`) for Rust/Go/etc.
 
 ## Out of scope (YAGNI)
 
