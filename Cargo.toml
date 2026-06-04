@@ -12,5 +12,6 @@ members = [
     "crates/build-and-sign",
     "crates/mp3-compress",
     "crates/mp4-optimize",
+    "crates/mutate",
 ]
 resolver = "2"
