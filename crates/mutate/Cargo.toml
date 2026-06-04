@@ -11,6 +11,7 @@ glob = "0.3"
 wait-timeout = "0.2"
 tempfile = "3"
 ttk-core = { path = "../core" }
+serde_json = "1"
 
 [dev-dependencies]
 tempfile = "3"

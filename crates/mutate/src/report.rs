@@ -66,13 +66,22 @@ impl Report {
         } else {
             out.push_str("\nsurvivors (test gaps):\n");
             for s in &self.survivors {
-                out.push_str(&format!(
-                    "  {}:{}  {} -> {}\n",
-                    s.site.file.display(),
-                    s.site.line,
-                    s.site.from,
-                    s.site.to
-                ));
+                if s.site.to.is_empty() {
+                    out.push_str(&format!(
+                        "  {}:{}  {}\n",
+                        s.site.file.display(),
+                        s.site.line,
+                        s.site.from
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "  {}:{}  {} -> {}\n",
+                        s.site.file.display(),
+                        s.site.line,
+                        s.site.from,
+                        s.site.to
+                    ));
+                }
             }
         }
         out
@@ -97,13 +106,22 @@ impl Report {
         } else {
             out.push_str("| file | line | from | to |\n|---|---|---|---|\n");
             for s in &self.survivors {
-                out.push_str(&format!(
-                    "| {} | {} | `{}` | `{}` |\n",
-                    s.site.file.display(),
-                    s.site.line,
-                    s.site.from,
-                    s.site.to
-                ));
+                if s.site.to.is_empty() {
+                    out.push_str(&format!(
+                        "| {} | {} | {} |  |\n",
+                        s.site.file.display(),
+                        s.site.line,
+                        s.site.from
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "| {} | {} | `{}` | `{}` |\n",
+                        s.site.file.display(),
+                        s.site.line,
+                        s.site.from,
+                        s.site.to
+                    ));
+                }
             }
         }
         out
@@ -144,6 +162,32 @@ mod tests {
         let results = vec![res(Outcome::Unviable)];
         let r = Report::from_results(&results, 0, true);
         assert_eq!(r.score(), None);
+    }
+
+    fn survivor_with(from: &str, to: &str) -> MutationResult {
+        MutationResult {
+            site: Site { file: PathBuf::from("src/lib.rs"), line: 7, col: 0, from: from.into(), to: to.into() },
+            outcome: Outcome::Survived,
+        }
+    }
+
+    #[test]
+    fn test_stdout_description_only_when_to_empty() {
+        let mut r = Report::from_results(&[], 0, true);
+        r.survived = 1;
+        r.survivors.push(survivor_with("replace == with != in is_even", ""));
+        let out = r.render_stdout();
+        assert!(out.contains("src/lib.rs:7  replace == with != in is_even"));
+        assert!(!out.contains("-> "));
+    }
+
+    #[test]
+    fn test_stdout_arrow_form_when_to_present() {
+        let mut r = Report::from_results(&[], 0, true);
+        r.survived = 1;
+        r.survivors.push(survivor_with("==", "!="));
+        let out = r.render_stdout();
+        assert!(out.contains("src/lib.rs:7  == -> !="));
     }
 
     #[test]
