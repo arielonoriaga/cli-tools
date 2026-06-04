@@ -1,3 +1,4 @@
+pub mod cargo_mutants;
 pub mod discover;
 pub mod engine;
 pub mod lexer;
